@@ -1,1 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>NEXUS CHRONICLES - 2D Action RPG</title>
+    <style>
+        * {
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #0a0c1a 0%, #05070f 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Courier New', 'Segoe UI', monospace;
+            overflow: hidden;
+        }
+        .game-wrapper {
+            position: relative;
+            border-radius: 20px;
+            box-shadow: 0 25px 40px rgba(0,0,0,0.5), 0 0 0 2px rgba(255,200,80,0.3);
+            background: #000;
+        }
+        canvas {
+            display: block;
+            cursor: crosshair;
+            border-radius: 16px;
+        }
+        .info-panel {
+            position: absolute;
+            bottom: 12px;
+            left: 12px;
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(8px);
+            border-radius: 16px;
+            padding: 6px 14px;
+            font-size: 11px;
+            font-weight: bold;
+            color: #ffdd99;
+            font-family: monospace;
+            pointer-events: none;
+            z-index: 20;
+            border-left: 3px solid #ffaa44;
+        }
+        .controls {
+            position: absolute;
+            bottom: 12px;
+            right: 12px;
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(8px);
+            border-radius: 16px;
+            padding: 6px 12px;
+            font-size: 9px;
+            color: #bbccff;
+            text-align: right;
+            pointer-events: none;
+            font-family: monospace;
+            z-index: 20;
+        }
+        @media (max-width: 850px) {
+            .info-panel { font-size: 9px; padding: 4px 10px; }
+            .controls { font-size: 8px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-wrapper">
+        <canvas id="gameCanvas" width="900" height="600" tabindex="0"></canvas>
+        <div class="info-panel">
+            ⚡ NEXUS CHRONICLES | 2D RPG
+        </div>
+        <div class="controls">
+            🖱️ CLICK = SHOOT | WASD / ARROWS | 🔄 Q = FORM | ⚡ Z ULTIMATE | 1-4 ABILITIES | E = INTERACT | R RELOAD
+        </div>
+    </div>
 
+    <script src="js/main.js"></script>
+</body>
+</html>
