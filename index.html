@@ -1,83 +1,430 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>NEXUS CHRONICLES - 2D Action RPG</title>
-    <style>
-        * {
-            user-select: none;
-            -webkit-tap-highlight-color: transparent;
-        }
-        body {
-            margin: 0;
-            min-height: 100vh;
-            background: linear-gradient(135deg, #0a0c1a 0%, #05070f 100%);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-family: 'Courier New', 'Segoe UI', monospace;
-            overflow: hidden;
-        }
-        .game-wrapper {
-            position: relative;
-            border-radius: 20px;
-            box-shadow: 0 25px 40px rgba(0,0,0,0.5), 0 0 0 2px rgba(255,200,80,0.3);
-            background: #000;
-        }
-        canvas {
-            display: block;
-            cursor: crosshair;
-            border-radius: 16px;
-        }
-        .info-panel {
-            position: absolute;
-            bottom: 12px;
-            left: 12px;
-            background: rgba(0,0,0,0.7);
-            backdrop-filter: blur(8px);
-            border-radius: 16px;
-            padding: 6px 14px;
-            font-size: 11px;
-            font-weight: bold;
-            color: #ffdd99;
-            font-family: monospace;
-            pointer-events: none;
-            z-index: 20;
-            border-left: 3px solid #ffaa44;
-        }
-        .controls {
-            position: absolute;
-            bottom: 12px;
-            right: 12px;
-            background: rgba(0,0,0,0.6);
-            backdrop-filter: blur(8px);
-            border-radius: 16px;
-            padding: 6px 12px;
-            font-size: 9px;
-            color: #bbccff;
-            text-align: right;
-            pointer-events: none;
-            font-family: monospace;
-            z-index: 20;
-        }
-        @media (max-width: 850px) {
-            .info-panel { font-size: 9px; padding: 4px 10px; }
-            .controls { font-size: 8px; }
-        }
-    </style>
-</head>
-<body>
-    <div class="game-wrapper">
-        <canvas id="gameCanvas" width="900" height="600" tabindex="0"></canvas>
-        <div class="info-panel">
-            ⚡ NEXUS CHRONICLES | 2D RPG
-        </div>
-        <div class="controls">
-            🖱️ CLICK = SHOOT | WASD / ARROWS | 🔄 Q = FORM | ⚡ Z ULTIMATE | 1-4 ABILITIES | E = INTERACT | R RELOAD
-        </div>
-    </div>
+import { useState, useEffect, useRef } from 'react';
+import { motion } from 'framer-motion';
 
-    <script src="js/main.js"></script>
-</body>
-</html>
+export default function FighterGame() {
+  const [p1, setP1] = useState({ 
+    hp: 100, 
+    maxHp: 100,
+    x: 100, 
+    power: 0, 
+    transformed: false, 
+    jump: false, 
+    block: false,
+    attacking: false,
+    knockback: 0,
+    stunned: 0
+  });
+  
+  const [p2, setP2] = useState({ 
+    hp: 100, 
+    maxHp: 100,
+    x: 650, 
+    transformed: false,
+    attacking: false,
+    knockback: 0,
+    stunned: 0,
+    actionCooldown: 0
+  });
+  
+  const [msg, setMsg] = useState('ROUND 1 - FIGHT!');
+  const [combo, setCombo] = useState([]);
+  const [maxCombo, setMaxCombo] = useState(0);
+  const [round, setRound] = useState(1);
+  const [gameState, setGameState] = useState('playing'); // 'playing', 'p1-win', 'p2-win'
+  const [effects, setEffects] = useState([]);
+  const effectIdRef = useRef(0);
+  const keysPressed = useRef({});
+
+  // Handle key down
+  useEffect(() => {
+    const down = (e) => {
+      keysPressed.current[e.key.toLowerCase()] = true;
+      if (gameState !== 'playing') return;
+
+      if (e.key.toLowerCase() === 'a') setP1(v => ({ ...v, x: Math.max(0, v.x - 25) }));
+      if (e.key.toLowerCase() === 'd') setP1(v => ({ ...v, x: Math.min(700, v.x + 25) }));
+      if (e.key.toLowerCase() === 'w') jump();
+      if (e.key.toLowerCase() === 'l') setP1(v => ({ ...v, block: true }));
+      if (e.key.toLowerCase() === 'j') attack('J', 10);
+      if (e.key.toLowerCase() === 'k') attack('K', 18);
+      if (e.key.toLowerCase() === 'f') fireball();
+      if (e.key.toLowerCase() === 't' && p1.power >= 100) transform();
+    };
+
+    const up = (e) => { 
+      keysPressed.current[e.key.toLowerCase()] = false;
+      if (e.key.toLowerCase() === 'l') setP1(v => ({ ...v, block: false })); 
+    };
+
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+    };
+  }, [p1, combo, gameState]);
+
+  // Continuous movement for smooth gameplay
+  useEffect(() => {
+    const moveInterval = setInterval(() => {
+      if (keysPressed.current['a']) {
+        setP1(v => ({ ...v, x: Math.max(0, v.x - 15) }));
+      }
+      if (keysPressed.current['d']) {
+        setP1(v => ({ ...v, x: Math.min(700, v.x + 15) }));
+      }
+    }, 50);
+
+    return () => clearInterval(moveInterval);
+  }, []);
+
+  // AI Logic - much smarter
+  useEffect(() => {
+    if (gameState !== 'playing') return;
+
+    const ai = setInterval(() => {
+      setP2(v => {
+        if (v.stunned > 0) return { ...v, stunned: v.stunned - 1 };
+        if (v.actionCooldown > 0) return { ...v, actionCooldown: v.actionCooldown - 1 };
+
+        const distance = Math.abs(v.x - p1.x);
+        const newX = distance > 120 ? (v.x > p1.x ? v.x - 18 : v.x + 18) : v.x;
+
+        // AI decision making
+        const random = Math.random();
+        if (distance < 90 && random > 0.7) {
+          // Attack
+          const damage = random > 0.85 ? 18 : 10;
+          setP1(prev => {
+            const actualDamage = prev.block ? Math.ceil(damage * 0.3) : damage;
+            return { ...prev, hp: Math.max(0, prev.hp - actualDamage), stunned: 2 };
+          });
+          return { ...v, actionCooldown: 8, attacking: true };
+        } else if (v.hp < 40 && random > 0.6 && v.power >= 25) {
+          // Special attack when low health
+          setP1(prev => ({ ...prev, hp: Math.max(0, prev.hp - 20) }));
+          return { ...v, actionCooldown: 10, power: v.power - 25 };
+        }
+
+        return { ...v, x: Math.max(0, Math.min(700, newX)), attacking: false };
+      });
+    }, 600);
+
+    return () => clearInterval(ai);
+  }, [p1, gameState]);
+
+  // Game state check
+  useEffect(() => {
+    if (p1.hp <= 0) {
+      setGameState('p2-win');
+      setMsg('GAME OVER - YOU LOSE!');
+    } else if (p2.hp <= 0) {
+      setGameState('p1-win');
+      setMsg('VICTORY!');
+    }
+  }, [p1.hp, p2.hp]);
+
+  const addEffect = (x, y, text, color = 'text-yellow-300') => {
+    const id = effectIdRef.current++;
+    setEffects(prev => [...prev, { id, x, y, text, color }]);
+    setTimeout(() => {
+      setEffects(prev => prev.filter(e => e.id !== id));
+    }, 1500);
+  };
+
+  const jump = () => {
+    if (p1.jump || p1.stunned > 0) return;
+    setP1(v => ({ ...v, jump: true }));
+    setTimeout(() => setP1(v => ({ ...v, jump: false })), 500);
+  };
+
+  const attack = (key, dmg) => {
+    if (p1.attacking || p1.stunned > 0 || gameState !== 'playing') return;
+
+    const newCombo = [...combo, key].slice(-3);
+    setCombo(newCombo);
+
+    let bonus = 0;
+    if (newCombo.join('') === 'JJK') bonus = 20;
+    if (newCombo.join('') === 'KKJ') bonus = 15;
+
+    if (combo.length > 0 && combo[combo.length - 1] === key) {
+      setCombo([key]);
+    } else {
+      setCombo(newCombo);
+    }
+
+    setP1(v => ({ ...v, attacking: true }));
+    setTimeout(() => setP1(v => ({ ...v, attacking: false })), 300);
+
+    if (Math.abs(p1.x - p2.x) < 90) {
+      const totalDmg = dmg + bonus;
+      setP2(v => ({ 
+        ...v, 
+        hp: Math.max(0, v.hp - totalDmg),
+        knockback: 30,
+        stunned: bonus > 0 ? 3 : 1
+      }));
+      setP1(v => ({ ...v, power: Math.min(100, v.power + 15) }));
+      addEffect(p2.x + 50, 150, totalDmg.toString(), bonus ? 'text-red-400' : 'text-yellow-300');
+      
+      if (bonus) {
+        setMsg(`COMBO x${newCombo.length}!`);
+        if (newCombo.length > maxCombo) setMaxCombo(newCombo.length);
+      }
+    }
+  };
+
+  const fireball = () => {
+    if (p1.power < 40 || p1.attacking || gameState !== 'playing') return;
+
+    setP1(v => ({ ...v, power: v.power - 40, attacking: true }));
+    setTimeout(() => setP1(v => ({ ...v, attacking: false })), 400);
+
+    setP2(v => ({ 
+      ...v, 
+      hp: Math.max(0, v.hp - 25),
+      knockback: 60,
+      stunned: 4
+    }));
+    
+    addEffect(p2.x, 100, 'FIREBALL!', 'text-orange-400');
+    setMsg('🔥 FIREBALL! 🔥');
+  };
+
+  const transform = () => {
+    if (p1.power < 100 || p1.transformed || gameState !== 'playing') return;
+    
+    setP1(v => ({ ...v, transformed: true, power: 0 }));
+    setMsg('⚡ ULTIMATE FORM! ⚡');
+    addEffect(p1.x + 50, 200, 'TRANSFORMATION', 'text-purple-400');
+
+    setTimeout(() => {
+      setP1(v => ({ ...v, transformed: false }));
+    }, 8000);
+  };
+
+  const resetRound = () => {
+    setP1({ 
+      hp: 100, 
+      maxHp: 100,
+      x: 100, 
+      power: 0, 
+      transformed: false, 
+      jump: false, 
+      block: false,
+      attacking: false,
+      knockback: 0,
+      stunned: 0
+    });
+    setP2({ 
+      hp: 100, 
+      maxHp: 100,
+      x: 650, 
+      transformed: false,
+      attacking: false,
+      knockback: 0,
+      stunned: 0,
+      actionCooldown: 0
+    });
+    setCombo([]);
+    setRound(round + 1);
+    setGameState('playing');
+    setMsg(`ROUND ${round + 1} - FIGHT!`);
+  };
+
+  const hpPercent1 = (p1.hp / p1.maxHp) * 100;
+  const hpPercent2 = (p2.hp / p2.maxHp) * 100;
+
+  return (
+    <div className='min-h-screen bg-gradient-to-b from-slate-950 via-black to-slate-950 text-white'>
+      {/* Header */}
+      <div className='flex justify-between items-center p-4 border-b-2 border-red-600'>
+        <div className='text-center flex-1'>
+          <div className='text-sm text-gray-400'>ROUND {round}</div>
+          <div className='text-2xl font-bold text-cyan-400'>{msg}</div>
+        </div>
+      </div>
+
+      {/* HUD */}
+      <div className='flex justify-between items-center p-4 gap-4'>
+        {/* P1 Stats */}
+        <div className='flex-1'>
+          <div className='text-xl font-bold mb-2'>PLAYER 1</div>
+          <div className='bg-gray-800 rounded-lg p-2 mb-2'>
+            <div className='flex justify-between text-sm mb-1'>
+              <span>HP</span>
+              <span>{p1.hp}/{p1.maxHp}</span>
+            </div>
+            <div className='w-full bg-gray-900 rounded h-6 overflow-hidden'>
+              <motion.div 
+                animate={{ width: `${Math.max(0, hpPercent1)}%` }}
+                className={`h-full ${hpPercent1 > 50 ? 'bg-gradient-to-r from-green-500 to-green-400' : hpPercent1 > 25 ? 'bg-gradient-to-r from-yellow-500 to-yellow-400' : 'bg-gradient-to-r from-red-600 to-red-500'}`}
+                transition={{ duration: 0.3 }}
+              />
+            </div>
+          </div>
+
+          {/* Power Bar */}
+          <div className='bg-gray-800 rounded-lg p-2'>
+            <div className='flex justify-between text-sm mb-1'>
+              <span>⚡ POWER</span>
+              <span>{p1.power}/100</span>
+            </div>
+            <div className='w-full bg-gray-900 rounded h-4 overflow-hidden'>
+              <motion.div 
+                animate={{ width: `${p1.power}%` }}
+                className='h-full bg-gradient-to-r from-yellow-400 to-yellow-300'
+                transition={{ duration: 0.2 }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Center - Combo */}
+        <div className='text-center min-w-[150px]'>
+          {combo.length > 0 && (
+            <motion.div 
+              key={combo.join('')}
+              initial={{ scale: 0.5, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className='text-4xl font-bold text-yellow-300 mb-2'
+            >
+              {combo.join('')}
+            </motion.div>
+          )}
+          <div className='text-sm text-gray-400'>Max Combo: {maxCombo}</div>
+        </div>
+
+        {/* P2 Stats */}
+        <div className='flex-1 text-right'>
+          <div className='text-xl font-bold mb-2'>ENEMY</div>
+          <div className='bg-gray-800 rounded-lg p-2 mb-2'>
+            <div className='flex justify-between text-sm mb-1'>
+              <span>{p2.hp}/{p2.maxHp}</span>
+              <span>HP</span>
+            </div>
+            <div className='w-full bg-gray-900 rounded h-6 overflow-hidden'>
+              <motion.div 
+                animate={{ width: `${Math.max(0, hpPercent2)}%` }}
+                className={`h-full ml-auto ${hpPercent2 > 50 ? 'bg-gradient-to-l from-red-500 to-red-400' : hpPercent2 > 25 ? 'bg-gradient-to-l from-orange-500 to-orange-400' : 'bg-gradient-to-l from-red-700 to-red-600'}`}
+                transition={{ duration: 0.3 }}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Game Arena */}
+      <div className='relative h-[500px] bg-gradient-to-b from-red-950 via-black to-black overflow-hidden border-4 border-red-800'>
+        {/* Background effects */}
+        <div className='absolute inset-0 opacity-10'>
+          <div className='absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(255,0,0,0.1)_0%,transparent_100%)]'></div>
+        </div>
+
+        {/* Floating effects */}
+        {effects.map(effect => (
+          <motion.div
+            key={effect.id}
+            initial={{ y: effect.y, opacity: 1, scale: 1 }}
+            animate={{ y: effect.y - 100, opacity: 0, scale: 0.5 }}
+            transition={{ duration: 1.5 }}
+            className={`absolute font-bold text-2xl pointer-events-none ${effect.color}`}
+            style={{ left: effect.x }}
+          >
+            {effect.text}
+          </motion.div>
+        ))}
+
+        {/* Player 1 */}
+        <motion.div 
+          animate={{ 
+            x: p1.x + p1.knockback, 
+            y: p1.jump ? -150 : 0, 
+            scale: p1.transformed ? 1.5 : 1,
+            rotate: p1.attacking ? 5 : 0
+          }}
+          transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+          className='absolute bottom-10'
+        >
+          <div className={`w-24 h-40 bg-gradient-to-b from-blue-500 to-blue-700 rounded-2xl border-4 ${p1.transformed ? 'border-yellow-300 shadow-2xl shadow-yellow-400' : 'border-white'} flex flex-col items-center justify-start shadow-2xl transition-all`}>
+            <div className={`w-16 h-16 ${p1.transformed ? 'bg-yellow-300 shadow-lg shadow-yellow-300' : 'bg-yellow-200'} rounded-full mt-2 transition-all`}/>
+            <div className='w-20 h-20 bg-blue-900 rounded-xl mt-2'/>
+          </div>
+          {p1.block && (
+            <motion.div 
+              animate={{ rotate: 360 }}
+              transition={{ duration: 1, repeat: Infinity }}
+              className='absolute inset-0 rounded-2xl border-4 border-cyan-400'
+            />
+          )}
+        </motion.div>
+
+        {/* Player 2 (Enemy) */}
+        <motion.div 
+          animate={{ 
+            x: p2.x + p2.knockback, 
+            scale: p2.transformed ? 1.2 : 1,
+            rotate: p2.attacking ? -5 : 0
+          }}
+          transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+          className='absolute bottom-10'
+        >
+          <div className={`w-24 h-40 bg-gradient-to-b from-red-600 to-red-800 rounded-2xl border-4 border-white flex flex-col items-center justify-start shadow-2xl ${p2.transformed ? 'shadow-red-700' : ''} transition-all`}>
+            <div className='w-16 h-16 bg-orange-200 rounded-full mt-2'/>
+            <div className='w-20 h-20 bg-red-900 rounded-xl mt-2'/>
+          </div>
+          {p2.attacking && (
+            <motion.div 
+              animate={{ x: 10 }}
+              transition={{ duration: 0.3, yoyo: Infinity }}
+              className='text-3xl'
+            >
+              ⚔️
+            </motion.div>
+          )}
+        </motion.div>
+      </div>
+
+      {/* Controls */}
+      <div className='bg-gray-900 border-t-2 border-red-600 p-4'>
+        <div className='text-center mb-2'>
+          <h3 className='text-lg font-bold text-cyan-400 mb-2'>CONTROLS</h3>
+          <p className='text-sm text-gray-300'>
+            <span className='text-yellow-300 font-bold'>A/D</span> Move | 
+            <span className='text-yellow-300 font-bold ml-2'>W</span> Jump | 
+            <span className='text-yellow-300 font-bold ml-2'>J</span> Punch (10) | 
+            <span className='text-yellow-300 font-bold ml-2'>K</span> Kick (18) | 
+            <span className='text-yellow-300 font-bold ml-2'>F</span> Fireball (25 Power) | 
+            <span className='text-yellow-300 font-bold ml-2'>L</span> Block | 
+            <span className='text-yellow-300 font-bold ml-2'>T</span> Transform (100 Power)
+          </p>
+        </div>
+
+        {/* Combos Info */}
+        <div className='text-center text-sm text-yellow-400 mb-3'>
+          💥 Combos: <span className='text-pink-400'>JJK</span> (+20dmg) | <span className='text-pink-400'>KKJ</span> (+15dmg)
+        </div>
+
+        {/* Game Over Options */}
+        {gameState !== 'playing' && (
+          <motion.div 
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            className='text-center'
+          >
+            <h1 className={`text-6xl font-bold mb-4 ${gameState === 'p1-win' ? 'text-yellow-400' : 'text-red-500'}`}>
+              {gameState === 'p1-win' ? '🎉 VICTORY! 🎉' : '💀 DEFEAT 💀'}
+            </h1>
+            <button
+              onClick={resetRound}
+              className='px-8 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 rounded-lg font-bold text-lg transition-all transform hover:scale-105'
+            >
+              NEXT ROUND
+            </button>
+          </motion.div>
+        )}
+      </div>
+    </div>
+  );
+}
